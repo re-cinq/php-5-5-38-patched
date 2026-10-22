@@ -479,7 +479,7 @@ static Bigint * Balloc(int k)
 	Bigint *rv;
 
 	if (k > Kmax) {
-		zend_error(E_ERROR, "Balloc() allocation exceeds list boundary");
+		zend_mm_safe_error_ex("Balloc() allocation exceeds list boundary");
 	}
 
 	_THREAD_PRIVATE_MUTEX_LOCK(dtoa_mutex);
