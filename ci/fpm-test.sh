@@ -110,7 +110,11 @@ for i in 1 2 3 4; do check_ok "request $i after timeout (worker replaced)" "$(re
 STRESS_N=30
 before=$(grep -c 'Maximum execution time of 1 second exceeded (terminated)' "$LOG")
 for i in $(seq 1 $STRESS_N); do
-	if ! request stress.php "" > /dev/null; then
+	request stress.php "" > /dev/null
+	rc=$?
+	# cgi-fcgi reports the expected worker-side hard exit as a nonzero status.
+	# Only status 124 means our outer 60-second timeout actually expired.
+	if [ $rc -eq 124 ]; then
 		fail "stress request $i did not complete within 60 seconds"
 		break
 	fi
