@@ -37,6 +37,9 @@
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
 
 ZEND_API void (*zend_execute_ex)(zend_execute_data *execute_data TSRMLS_DC);
 ZEND_API void (*zend_execute_internal)(zend_execute_data *execute_data_ptr, zend_fcall_info *fci, int return_value_used TSRMLS_DC);
@@ -1333,6 +1336,40 @@ void execute_new_code(TSRMLS_D) /* {{{ */
 ZEND_API void zend_timeout(int dummy) /* {{{ */
 {
 	TSRMLS_FETCH();
+
+#ifndef ZEND_WIN32
+	/* Outside of Windows this runs as the SIGPROF handler, at an arbitrary
+	 * point of execution, possibly in the middle of updating the heap or a
+	 * hash table. Bailing out from here and continuing with shutdown
+	 * functions, destructors and the next request operates on corrupted
+	 * state (GHSA-w8hw-w9fx-j79w, GHSA-6wmf-4rv5-p3rp), so terminate the
+	 * process instead, as PHP >= 7 does on hard timeout. On Windows the
+	 * timeout is only acted upon between opcodes, see tq_timer_cb(). */
+	{
+		const char *error_filename = NULL;
+		uint error_lineno = 0;
+		char buf[2048];
+		int len;
+
+		if (zend_is_compiling(TSRMLS_C)) {
+			error_filename = zend_get_compiled_filename(TSRMLS_C);
+			error_lineno = zend_get_compiled_lineno(TSRMLS_C);
+		} else if (EG(in_execution)) {
+			error_filename = EG(active_op_array)?EG(active_op_array)->filename:NULL;
+			error_lineno = EG(opline_ptr)?(*EG(opline_ptr))->lineno:0;
+		}
+
+		len = snprintf(buf, sizeof(buf),
+			"\nFatal error: Maximum execution time of %d second%s exceeded (terminated) in %s on line %d\n",
+			EG(timeout_seconds), EG(timeout_seconds) == 1 ? "" : "s",
+			error_filename ? error_filename : "Unknown", error_lineno);
+		if (len > 0) {
+			ssize_t written = write(STDERR_FILENO, buf, MIN((size_t)len, sizeof(buf) - 1));
+			(void) written;
+		}
+		_exit(124);
+	}
+#endif
 
 	if (zend_on_timeout) {
 #ifdef ZEND_SIGNALS
