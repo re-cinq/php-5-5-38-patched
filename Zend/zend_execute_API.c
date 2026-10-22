@@ -1341,6 +1341,7 @@ void execute_new_code(TSRMLS_D) /* {{{ */
 static void zend_timeout_write_stderr(int seconds)
 {
 	static const char prefix[] = "\nFatal error: Maximum execution time of ";
+	static const char generic[] = "\nFatal error: Maximum execution time exceeded (terminated)\n";
 	static const char singular[] = " second exceeded (terminated)\n";
 	static const char plural[] = " seconds exceeded (terminated)\n";
 	char buf[128];
@@ -1350,20 +1351,22 @@ static void zend_timeout_write_stderr(int seconds)
 	unsigned int value = seconds > 0 ? (unsigned int) seconds : 0;
 	ssize_t written;
 
-	text = prefix;
+	text = seconds < 0 ? generic : prefix;
 	while (*text) {
 		buf[pos++] = *text++;
 	}
-	do {
-		digits[digit_count++] = (char) ('0' + value % 10);
-		value /= 10;
-	} while (value);
-	while (digit_count) {
-		buf[pos++] = digits[--digit_count];
-	}
-	text = seconds == 1 ? singular : plural;
-	while (*text) {
-		buf[pos++] = *text++;
+	if (seconds >= 0) {
+		do {
+			digits[digit_count++] = (char) ('0' + value % 10);
+			value /= 10;
+		} while (value);
+		while (digit_count) {
+			buf[pos++] = digits[--digit_count];
+		}
+		text = seconds == 1 ? singular : plural;
+		while (*text) {
+			buf[pos++] = *text++;
+		}
 	}
 
 	while (offset < pos) {
@@ -1381,8 +1384,6 @@ static void zend_timeout_write_stderr(int seconds)
 
 ZEND_API void zend_timeout(int dummy) /* {{{ */
 {
-	TSRMLS_FETCH();
-
 #ifndef ZEND_WIN32
 	/* Outside of Windows this runs as the SIGPROF handler, at an arbitrary
 	 * point of execution, possibly in the middle of updating the heap or a
@@ -1391,10 +1392,17 @@ ZEND_API void zend_timeout(int dummy) /* {{{ */
 	 * state (GHSA-w8hw-w9fx-j79w, GHSA-6wmf-4rv5-p3rp), so terminate the
 	 * process instead, as PHP >= 7 does on hard timeout. Reporting is limited
 	 * to async-signal-safe operations. On Windows the
-	 * timeout is only acted upon between opcodes, see tq_timer_cb(). */
+	 * timeout is only acted upon between opcodes, see tq_timer_cb(). In a ZTS
+	 * build, fetching thread-local executor state is not signal-safe, so omit
+	 * the configured duration from the diagnostic. */
+#ifdef ZTS
+	zend_timeout_write_stderr(-1);
+#else
 	zend_timeout_write_stderr(EG(timeout_seconds));
+#endif
 	_exit(124);
 #endif
+	TSRMLS_FETCH();
 
 	if (zend_on_timeout) {
 #ifdef ZEND_SIGNALS

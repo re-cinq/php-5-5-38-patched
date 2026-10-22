@@ -43,6 +43,16 @@ pass "php-fpm configuration test"
 FPM_PID=$!
 cleanup_fpm() {
 	kill "$FPM_PID" 2>/dev/null
+	# FPM should stop within process_control_timeout (10s). Never let an EXIT
+	# trap hide the test result by waiting forever on a retained child.
+	for _ in $(seq 1 150); do
+		kill -0 "$FPM_PID" 2>/dev/null || break
+		sleep 0.1
+	done
+	if kill -0 "$FPM_PID" 2>/dev/null; then
+		echo "::warning::php-fpm did not stop within 15s; killing the master"
+		kill -KILL "$FPM_PID" 2>/dev/null
+	fi
 	wait "$FPM_PID" 2>/dev/null
 	echo "----- php-fpm log"
 	cat "$LOG"
@@ -97,7 +107,12 @@ for i in 1 2 3 4; do check_ok "request $i after timeout (worker replaced)" "$(re
 # Timeout stress (see ci/www/stress.php)
 STRESS_N=30
 before=$(grep -c 'Maximum execution time of 1 second exceeded (terminated)' "$LOG")
-for i in $(seq 1 $STRESS_N); do request stress.php "" > /dev/null; done
+for i in $(seq 1 $STRESS_N); do
+	if ! request stress.php "" > /dev/null; then
+		fail "stress request $i did not complete within 60 seconds"
+		break
+	fi
+done
 sleep 1
 check_stress "$LOG" $STRESS_N "$before"
 for i in 1 2 3 4; do check_ok "request $i after stress" "$(request ok.php n=$i)" "$i"; done

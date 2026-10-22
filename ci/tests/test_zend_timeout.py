@@ -12,7 +12,9 @@ EXECUTOR = ROOT / "Zend" / "zend_execute_API.c"
 
 
 def function_source(source, name):
-    match = re.search(r"static void %s\([^\n]+\)\n\{" % re.escape(name), source)
+    match = re.search(
+        r"(?:static|ZEND_API) void %s\([^\n]+\)[^\n]*\n\{" % re.escape(name), source
+    )
     if not match:
         raise AssertionError("function %s not found" % name)
     depth = 0
@@ -27,6 +29,16 @@ def function_source(source, name):
 
 
 class ZendTimeoutTests(unittest.TestCase):
+    def test_posix_handler_fetches_thread_state_only_after_hard_exit(self):
+        source = EXECUTOR.read_text()
+        handler = function_source(source, "zend_timeout")
+        hard_exit = handler.index("_exit(124);")
+        thread_fetch = handler.index("TSRMLS_FETCH();")
+
+        self.assertLess(hard_exit, thread_fetch)
+        zts_path = handler[handler.index("#ifdef ZTS"):handler.index("#else")]
+        self.assertNotIn("EG(", zts_path)
+
     def test_timeout_message_uses_direct_signal_safe_writer(self):
         source = EXECUTOR.read_text()
         writer = function_source(source, "zend_timeout_write_stderr")
@@ -37,6 +49,7 @@ class ZendTimeoutTests(unittest.TestCase):
             %s
             int main(void)
             {
+                zend_timeout_write_stderr(-1);
                 zend_timeout_write_stderr(1);
                 zend_timeout_write_stderr(30);
                 return 0;
@@ -61,6 +74,7 @@ class ZendTimeoutTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode)
         self.assertEqual(
+            b"\nFatal error: Maximum execution time exceeded (terminated)\n"
             b"\nFatal error: Maximum execution time of 1 second exceeded (terminated)\n"
             b"\nFatal error: Maximum execution time of 30 seconds exceeded (terminated)\n",
             result.stderr,

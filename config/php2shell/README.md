@@ -60,7 +60,7 @@ Some of the fix is in header macros (the smart_str size guard in `ext/standard/p
 
 ## Do not use
 
-- **`RLIMIT_AS` / `RLIMIT_DATA` as a memory cap.** That includes Apache `RLimitMEM`, systemd `LimitAS=`/`LimitDATA=` on the php-fpm or httpd unit, and `ulimit -v`/`-d`. The advisory warns they reach the same vulnerable failure paths. Use `memory_limit`. A cgroup memory limit (systemd `MemoryMax=`) kills the whole process and is fine.
+- **`RLIMIT_AS` / `RLIMIT_DATA` as a memory cap.** That includes Apache `RLimitMEM`, systemd `LimitAS=`/`LimitDATA=` on the php-fpm or httpd unit, and `ulimit -v`/`-d`. The advisory warns they reach the same allocation-failure paths. Use the patched `memory_limit` path. A cgroup memory limit such as systemd `MemoryMax=` is only a final containment layer: an allocation can fail before the kernel kills a process, and a shared cgroup can kill the FPM master or multiple workers.
 - **`memory_limit = -1`.**
 
 ## Emergency measures for hosts that cannot be patched yet
