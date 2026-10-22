@@ -41,15 +41,16 @@ CONFIG_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../config/php2shell" && pwd)
 
 # Settings from config/php2shell that must be in effect
 check_settings() {
-	local out=$1
+	local out=$1 expected_max_execution_time=${2:-30}
 	local kv k
 	for kv in 'max_file_uploads=20' 'max_input_nesting_level=16' 'max_input_time=30' \
 		'max_input_vars=1000' 'max_multipart_body_parts=-1' 'memory_limit=128M' \
-		'post_max_size=8M' 'upload_max_filesize=8M' 'override_probe=12'; do
+		"max_execution_time=$expected_max_execution_time" 'post_max_size=8M' 'upload_max_filesize=8M' \
+		'log_errors=1' 'override_probe=12'; do
 		if grep -qxF "$kv" <<<"$out"; then pass "setting $kv"; else fail "setting $kv not in effect"; fi
 	done
 	# Booleans read back as "" (php.ini Off) or "0" (php_admin_flag off)
-	for k in session.upload_progress.enabled expose_php display_errors; do
+	for k in session.upload_progress.enabled expose_php display_errors display_startup_errors; do
 		if grep -qxE "$k=0?" <<<"$out"; then pass "setting $k off"; else fail "setting $k not off: $(grep "^$k=" <<<"$out")"; fi
 	done
 }

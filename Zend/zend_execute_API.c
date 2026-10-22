@@ -21,6 +21,7 @@
 
 #include <stdio.h>
 #include <signal.h>
+#include <errno.h>
 
 #include "zend.h"
 #include "zend_compile.h"
@@ -1333,6 +1334,51 @@ void execute_new_code(TSRMLS_D) /* {{{ */
 }
 /* }}} */
 
+#ifndef ZEND_WIN32
+/* Keep the hard-timeout path async-signal-safe. It may interrupt malloc,
+ * stdio, or executor teardown, so it must not call snprintf(), strlen(), or
+ * inspect filename pointers that may be changing. */
+static void zend_timeout_write_stderr(int seconds)
+{
+	static const char prefix[] = "\nFatal error: Maximum execution time of ";
+	static const char singular[] = " second exceeded (terminated)\n";
+	static const char plural[] = " seconds exceeded (terminated)\n";
+	char buf[128];
+	char digits[3 * sizeof(unsigned int) + 1];
+	const char *text;
+	size_t pos = 0, digit_count = 0, offset = 0;
+	unsigned int value = seconds > 0 ? (unsigned int) seconds : 0;
+	ssize_t written;
+
+	text = prefix;
+	while (*text) {
+		buf[pos++] = *text++;
+	}
+	do {
+		digits[digit_count++] = (char) ('0' + value % 10);
+		value /= 10;
+	} while (value);
+	while (digit_count) {
+		buf[pos++] = digits[--digit_count];
+	}
+	text = seconds == 1 ? singular : plural;
+	while (*text) {
+		buf[pos++] = *text++;
+	}
+
+	while (offset < pos) {
+		written = write(STDERR_FILENO, buf + offset, pos - offset);
+		if (written > 0) {
+			offset += (size_t) written;
+		} else if (written < 0 && errno == EINTR) {
+			continue;
+		} else {
+			break;
+		}
+	}
+}
+#endif
+
 ZEND_API void zend_timeout(int dummy) /* {{{ */
 {
 	TSRMLS_FETCH();
@@ -1343,32 +1389,11 @@ ZEND_API void zend_timeout(int dummy) /* {{{ */
 	 * hash table. Bailing out from here and continuing with shutdown
 	 * functions, destructors and the next request operates on corrupted
 	 * state (GHSA-w8hw-w9fx-j79w, GHSA-6wmf-4rv5-p3rp), so terminate the
-	 * process instead, as PHP >= 7 does on hard timeout. On Windows the
+	 * process instead, as PHP >= 7 does on hard timeout. Reporting is limited
+	 * to async-signal-safe operations. On Windows the
 	 * timeout is only acted upon between opcodes, see tq_timer_cb(). */
-	{
-		const char *error_filename = NULL;
-		uint error_lineno = 0;
-		char buf[2048];
-		int len;
-
-		if (zend_is_compiling(TSRMLS_C)) {
-			error_filename = zend_get_compiled_filename(TSRMLS_C);
-			error_lineno = zend_get_compiled_lineno(TSRMLS_C);
-		} else if (EG(in_execution)) {
-			error_filename = EG(active_op_array)?EG(active_op_array)->filename:NULL;
-			error_lineno = EG(opline_ptr)?(*EG(opline_ptr))->lineno:0;
-		}
-
-		len = snprintf(buf, sizeof(buf),
-			"\nFatal error: Maximum execution time of %d second%s exceeded (terminated) in %s on line %d\n",
-			EG(timeout_seconds), EG(timeout_seconds) == 1 ? "" : "s",
-			error_filename ? error_filename : "Unknown", error_lineno);
-		if (len > 0) {
-			ssize_t written = write(STDERR_FILENO, buf, MIN((size_t)len, sizeof(buf) - 1));
-			(void) written;
-		}
-		_exit(124);
-	}
+	zend_timeout_write_stderr(EG(timeout_seconds));
+	_exit(124);
 #endif
 
 	if (zend_on_timeout) {

@@ -41,6 +41,8 @@ DocumentRoot "$WWW"
 </FilesMatch>
 # Shipped hardening (config/php2shell)
 Include "$CONFIG_DIR/apache-mod_php.conf"
+# Keep the production limit locked, but shorten it for timeout stress tests.
+php_admin_value max_execution_time 1
 CONF
 
 /usr/sbin/apache2 -f "$RUN/httpd.conf" -t || { echo "::error::Apache configuration test failed"; exit 1; }
@@ -58,7 +60,7 @@ request() {
 
 check_ok "baseline request" "$(request 'ok.php?n=0')" 0
 
-check_settings "$(request settings.php)"
+check_settings "$(request settings.php)" 1
 curl -s -D - -o /dev/null "http://127.0.0.1:$PORT/ok.php" | grep -qi '^X-Powered-By' && fail "X-Powered-By header exposed" || pass "no X-Powered-By header"
 
 # LimitRequestBody rejects a body above 8M before PHP parses it

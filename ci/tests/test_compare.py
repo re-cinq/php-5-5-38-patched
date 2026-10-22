@@ -19,6 +19,10 @@ EXPECTED_XFAILS = (
     "ext/session/tests/rfc1867_sid_only_cookie.phpt",
     "ext/session/tests/rfc1867_sid_post.phpt",
 )
+EXPECTED_SKIPS = (
+    "tests/func/005a.phpt",
+    "tests/lang/045.phpt",
+)
 
 
 def log_text(results):
@@ -63,6 +67,32 @@ class CompareCliTests(unittest.TestCase):
         result = self.run_compare(patched, pristine)
 
         self.assertEqual(0, result.returncode, result.stdout)
+
+    def test_rejects_unexpected_new_skip(self):
+        patched = [(REGRESSION, "PASS"), ("tests/example.phpt", "SKIP")]
+        pristine = [(REGRESSION, "PASS"), ("tests/example.phpt", "PASS")]
+
+        result = self.run_compare(patched, pristine)
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("tests/example.phpt: new SKIP on patched tree", result.stdout)
+
+    def test_accepts_only_the_expected_timeout_skips(self):
+        patched = [(REGRESSION, "PASS")] + [(test, "SKIP") for test in EXPECTED_SKIPS]
+        pristine = [(REGRESSION, "PASS")] + [(test, "PASS") for test in EXPECTED_SKIPS]
+
+        result = self.run_compare(patched, pristine)
+
+        self.assertEqual(0, result.returncode, result.stdout)
+
+    def test_rejects_warning_when_pristine_passes(self):
+        patched = [(REGRESSION, "PASS"), ("tests/example.phpt", "WARN")]
+        pristine = [(REGRESSION, "PASS"), ("tests/example.phpt", "PASS")]
+
+        result = self.run_compare(patched, pristine)
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("tests/example.phpt: WARN on patched tree", result.stdout)
 
 
 if __name__ == "__main__":

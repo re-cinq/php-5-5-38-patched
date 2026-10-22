@@ -32,6 +32,8 @@ pm.max_children = 1
 php_admin_value[error_log] = $RUN/php-errors.log
 CONF
 	cat "$CONFIG_DIR/php-fpm-pool.conf"
+	# Keep the production limit locked, but shorten it for timeout stress tests.
+	echo 'php_admin_value[max_execution_time] = 1'
 } > "$RUN/php-fpm.conf"
 
 "$SRC/sapi/fpm/php-fpm" -c "$WWW/php.ini" -y "$RUN/php-fpm.conf" -t || { echo "::error::php-fpm configuration test failed"; exit 1; }
@@ -59,7 +61,7 @@ exits() { grep -c "exited with code $1" "$LOG"; }
 
 check_ok "baseline request" "$(request ok.php n=0)" 0
 
-check_settings "$(request settings.php)"
+check_settings "$(request settings.php)" 1
 raw_request ok.php n=0 | sed '/^$/q' | grep -qi '^X-Powered-By' && fail "X-Powered-By header exposed" || pass "no X-Powered-By header"
 
 # A body above post_max_size is not parsed into $_POST. The body must really
