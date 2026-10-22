@@ -39,7 +39,12 @@ DocumentRoot "$WWW"
 <FilesMatch "\.php$">
 	SetHandler application/x-httpd-php
 </FilesMatch>
+# Shipped hardening (config/php2shell)
+Include "$CONFIG_DIR/apache-mod_php.conf"
 CONF
+
+/usr/sbin/apache2 -f "$RUN/httpd.conf" -t || { echo "::error::Apache configuration test failed"; exit 1; }
+pass "Apache configuration test"
 
 /usr/sbin/apache2 -f "$RUN/httpd.conf" -k start || { cat "$LOG"; exit 1; }
 trap '/usr/sbin/apache2 -f "$RUN/httpd.conf" -k stop; sleep 1; echo "----- apache error log"; cat "$LOG"' EXIT
@@ -48,6 +53,16 @@ for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/ok.php" &&
 request() { curl -s -m 30 "http://127.0.0.1:$PORT/$1"; }
 
 check_ok "baseline request" "$(request 'ok.php?n=0')" 0
+
+check_settings "$(request settings.php)"
+curl -s -D - -o /dev/null "http://127.0.0.1:$PORT/ok.php" | grep -qi '^X-Powered-By' && fail "X-Powered-By header exposed" || pass "no X-Powered-By header"
+
+# LimitRequestBody rejects a body above 8M before PHP parses it
+head -c $((9 * 1024 * 1024)) /dev/zero | tr '\0' 'a' > "$RUN/big-body"
+status=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/x-www-form-urlencoded' \
+	--data-binary @"$RUN/big-body" "http://127.0.0.1:$PORT/settings.php")
+[ "$status" = 413 ] && pass "body above LimitRequestBody rejected with 413" || fail "body above LimitRequestBody: expected HTTP 413, got $status"
+check_ok "request after oversized POST" "$(request 'ok.php?n=0')" 0
 
 for i in $(seq 1 20); do
 	request fatal.php > /dev/null
@@ -68,6 +83,13 @@ sleep 1
 check_no_marker timeout-apache
 grep -q 'Maximum execution time of 1 second exceeded (terminated)' "$LOG" && pass "timeout: fatal error logged via child stderr" || fail "timeout: fatal error not found in the error log"
 for i in 1 2 3 4 5 6; do check_ok "request $i after timeout" "$(request "ok.php?n=$i")" "$i"; done
+
+# Timeout stress (see ci/www/stress.php)
+STRESS_N=30
+for i in $(seq 1 $STRESS_N); do request stress.php > /dev/null; done
+sleep 1
+check_stress "$LOG" $STRESS_N
+for i in 1 2 3 4; do check_ok "request $i after stress" "$(request "ok.php?n=$i")" "$i"; done
 
 if grep -qE 'exit signal|Segmentation fault|zend_mm_heap corrupted' "$LOG"; then
 	fail "a child crashed (see error log)"
