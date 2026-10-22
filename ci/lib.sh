@@ -25,7 +25,8 @@ check_ok() {
 
 prepare_www() {
 	WWW=$(mktemp -d)
-	cp "$CI_DIR"/www/*.php "$WWW"/
+	cp "$CI_DIR"/www/*.php "$CI_DIR"/www/php.ini "$WWW"/
 	mkdir -p "$WWW/markers"
 	chmod -R a+rwX "$WWW"
+	[ -f "$WWW/php.ini" ] || { echo "::error::php.ini missing"; exit 1; }
 }
