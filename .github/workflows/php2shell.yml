@@ -1,0 +1,109 @@
+name: PHP2Shell
+
+# Verifies the CVE-2026-109618 / CVE-2026-109619 backport:
+#  - regression: PHP's test suite on the patched tree vs pristine 5.5.38;
+#    php2shell_* tests must pass on the patch and detect the vulnerability on
+#    pristine, and no other test may regress.
+#  - fpm / apache: OOM and max_execution_time terminate only the affected
+#    PHP-FPM worker / mod_php child without running user code, the server
+#    keeps serving, and regular fatal errors do not affect later requests.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PRISTINE_URL: https://www.php.net/distributions/php-5.5.38.tar.gz
+  PRISTINE_SHA256: 4f458c9b504269615715a62f182b7c2f89bb8284f484befc221b56a1571b506e
+  TEST_PATHS: Zend tests main ext/session/tests ext/standard/tests sapi/cli/tests sapi/cgi/tests
+
+jobs:
+  regression:
+    name: Regression tests (patched vs pristine 5.5.38)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: patched
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config
+
+      - name: Fetch pristine PHP 5.5.38
+        run: |
+          curl -sSfL -o php-5.5.38.tar.gz "$PRISTINE_URL"
+          echo "$PRISTINE_SHA256  php-5.5.38.tar.gz" | sha256sum -c
+          mkdir pristine && tar -xzf php-5.5.38.tar.gz -C pristine --strip-components=1
+          # Run the same PHP2Shell tests against the unpatched release
+          (cd patched && find . -name 'php2shell_*.phpt' -print0) | \
+            (cd pristine && xargs -0 -I{} cp ../patched/{} {})
+
+      - name: Build patched
+        run: patched/ci/build.sh patched
+
+      - name: Build pristine
+        run: patched/ci/build.sh pristine
+
+      # Sequentially: the suites share fixed ports and session files
+      - name: Run test suite (patched)
+        run: patched/ci/run-suite.sh patched "$PWD/patched-tests.log" $TEST_PATHS
+
+      - name: Run test suite (pristine)
+        run: patched/ci/run-suite.sh pristine "$PWD/pristine-tests.log" $TEST_PATHS
+
+      - name: Compare results
+        run: python3 -I patched/ci/compare.py patched patched-tests.log pristine pristine-tests.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: regression-test-logs
+          path: |
+            patched-tests.log
+            pristine-tests.log
+            patched/**/php2shell_*.out
+            patched/**/php2shell_*.diff
+
+  fpm:
+    name: PHP-FPM integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libfcgi-bin
+
+      - name: Build with FPM
+        run: ci/build.sh . --enable-fpm
+
+      - name: Run FPM integration test
+        run: ci/fpm-test.sh .
+
+  apache:
+    name: Apache mod_php integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential pkg-config apache2 apache2-dev
+          sudo systemctl stop apache2 || true
+
+      - name: Build mod_php
+        run: ci/build.sh . --with-apxs2=/usr/bin/apxs
+
+      - name: Run Apache integration test
+        run: ci/apache-test.sh .
