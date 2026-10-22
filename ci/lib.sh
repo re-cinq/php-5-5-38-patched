@@ -57,11 +57,13 @@ check_settings() {
 
 # After the stress run: every request must have terminated its process
 # cleanly, no shutdown function may have run, and nothing may have corrupted
-# the heap. <log> <requests>
+# the heap. <log> <requests> <timeout-count-before-stress>
 check_stress() {
-	local log=$1 n=$2 terminated
-	# Only count stress.php: the earlier timeout.php test logs the same message
-	terminated=$(grep -c 'Maximum execution time of 1 second exceeded (terminated) in .*/stress\.php' "$log")
+	local log=$1 n=$2 before=$3 total terminated
+	# The async-signal-safe timeout message deliberately omits request pointers,
+	# so count only the messages added during this sequential stress phase.
+	total=$(grep -c 'Maximum execution time of 1 second exceeded (terminated)' "$log")
+	terminated=$((total - before))
 	[ "$terminated" -eq "$n" ] && pass "stress: $terminated/$n requests terminated cleanly" \
 		|| fail "stress: only $terminated/$n requests terminated with the hard-exit message"
 	if ls "$WWW"/markers/stress-* >/dev/null 2>&1; then

@@ -96,9 +96,10 @@ for i in 1 2 3 4; do check_ok "request $i after timeout (worker replaced)" "$(re
 
 # Timeout stress (see ci/www/stress.php)
 STRESS_N=30
+before=$(grep -c 'Maximum execution time of 1 second exceeded (terminated)' "$LOG")
 for i in $(seq 1 $STRESS_N); do request stress.php "" > /dev/null; done
 sleep 1
-check_stress "$LOG" $STRESS_N
+check_stress "$LOG" $STRESS_N "$before"
 for i in 1 2 3 4; do check_ok "request $i after stress" "$(request ok.php n=$i)" "$i"; done
 
 if grep -qE 'exited on signal|SIGSEGV|zend_mm_heap corrupted' "$LOG"; then
