@@ -328,6 +328,22 @@ void shutdown_executor(TSRMLS_D) /* {{{ */
 		}
 	} zend_end_try();
 
+	/* A bailout in one of the blocks above may leave these pointing to freed
+	 * request memory. They may be used by zend_error() before the next
+	 * init_executor(), so reset them unconditionally (GHSA-6wmf-4rv5-p3rp). */
+	EG(user_error_handler) = NULL;
+	EG(user_exception_handler) = NULL;
+	memset(&EG(user_error_handlers_error_reporting), 0, sizeof(EG(user_error_handlers_error_reporting)));
+	memset(&EG(user_error_handlers), 0, sizeof(EG(user_error_handlers)));
+	memset(&EG(user_exception_handlers), 0, sizeof(EG(user_exception_handlers)));
+	EG(objects_store).object_buckets = NULL;
+	EG(objects_store).top = 1;
+	EG(objects_store).size = 0;
+	EG(objects_store).free_list_head = -1;
+	EG(error_handling) = EH_NORMAL;
+	EG(exception) = NULL;
+	EG(in_autoload) = NULL;
+
 	zend_shutdown_fpu(TSRMLS_C);
 
 	EG(active) = 0;

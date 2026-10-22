@@ -2620,7 +2620,12 @@ static int php_session_rfc1867_callback(unsigned int event, void *event_data, vo
 	if (php_session_rfc1867_orig_callback) {
 		retval = php_session_rfc1867_orig_callback(event, event_data, extra TSRMLS_CC);
 	}
-	if (!PS(rfc1867_enabled)) {
+	/* Session upload progress is unconditionally disabled, regardless of
+	 * session.upload_progress.enabled (GHSA-w8hw-w9fx-j79w,
+	 * GHSA-6wmf-4rv5-p3rp). It decodes and encodes the session while the
+	 * request body is parsed, before RINIT, where a bailout leaves the session
+	 * and request state corrupted. Same mitigation as upstream for EOL PHP. */
+	if (!PS(rfc1867_enabled) || 1) {
 		return retval;
 	}
 

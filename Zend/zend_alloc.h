@@ -52,6 +52,16 @@ typedef struct _zend_leak_info {
 
 BEGIN_EXTERN_C()
 
+/* Report a fatal allocation error to stderr and terminate the process,
+ * without bailing out. See zend_alloc.c. */
+#if defined(__GNUC__) && __GNUC__ >= 3 && !defined(__INTEL_COMPILER) && !defined(DARWIN) && !defined(__hpux) && !defined(_AIX) && !defined(__osf__)
+ZEND_API void zend_mm_safe_error_ex(const char *format, ...) __attribute__ ((noreturn));
+ZEND_API void zend_out_of_memory(void) __attribute__ ((noreturn));
+#else
+ZEND_API void zend_mm_safe_error_ex(const char *format, ...);
+ZEND_API void zend_out_of_memory(void);
+#endif
+
 ZEND_API char *zend_strndup(const char *s, unsigned int length) ZEND_ATTRIBUTE_MALLOC;
 
 ZEND_API void *_emalloc(size_t size ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC) ZEND_ATTRIBUTE_MALLOC ZEND_ATTRIBUTE_ALLOC_SIZE(1);
@@ -96,8 +106,8 @@ inline static void * __zend_malloc(size_t len)
 	if (tmp) {
 		return tmp;
 	}
-	fprintf(stderr, "Out of memory\n");
-	exit(1);
+	zend_out_of_memory();
+	return NULL;
 }
 
 inline static void * __zend_calloc(size_t nmemb, size_t len)
@@ -113,8 +123,8 @@ inline static void * __zend_realloc(void *p, size_t len)
 	if (p) {
 		return p;
 	}
-	fprintf(stderr, "Out of memory\n");
-	exit(1);
+	zend_out_of_memory();
+	return NULL;
 }
 
 
