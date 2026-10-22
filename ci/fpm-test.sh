@@ -44,7 +44,7 @@ for _ in $(seq 1 50); do grep -q 'ready to handle connections' "$LOG" 2>/dev/nul
 grep -q 'ready to handle connections' "$LOG" || { echo "::error::php-fpm did not start"; exit 1; }
 
 raw_request() { # <script> <query> ; prints headers and body
-	SCRIPT_FILENAME="$WWW/$1" SCRIPT_NAME="/$1" REQUEST_METHOD=GET QUERY_STRING="$2" \
+	SCRIPT_FILENAME="$WWW/$1" SCRIPT_NAME="/$1" REQUEST_METHOD=GET QUERY_STRING="${2:-}" \
 		cgi-fcgi -bind -connect 127.0.0.1:$PORT 2>/dev/null | tr -d '\r'
 }
 request() { raw_request "$@" | sed '1,/^$/d'; }
