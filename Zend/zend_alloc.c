@@ -24,6 +24,7 @@
 #include "zend_alloc.h"
 #include "zend_globals.h"
 #include "zend_operators.h"
+#include <sys/types.h>
 
 #ifdef HAVE_SIGNAL_H
 # include <signal.h>
@@ -77,17 +78,27 @@ void zend_debug_alloc_output(char *format, ...)
 }
 #endif
 
+/* Write directly to stderr: _exit() does not flush stdio buffers, and stderr
+ * may be buffered (e.g. in Apache children), which would lose the message. */
+static void zend_mm_write_stderr(const char *buf, size_t len)
+{
+#ifdef ZEND_WIN32
+	fwrite(buf, 1, len, stderr);
+	fflush(stderr);
+#else
+	ssize_t written = write(STDERR_FILENO, buf, len);
+	(void) written;
+#endif
+}
+
 #if (defined (__GNUC__) && __GNUC__ > 2 ) && !defined(__INTEL_COMPILER) && !defined(DARWIN) && !defined(__hpux) && !defined(_AIX)
 static void zend_mm_panic(const char *message) __attribute__ ((noreturn));
 #endif
 
 static void zend_mm_panic(const char *message)
 {
-	fprintf(stderr, "%s\n", message);
-/* See http://support.microsoft.com/kb/190351 */
-#ifdef PHP_WIN32
-	fflush(stderr);
-#endif
+	zend_mm_write_stderr(message, strlen(message));
+	zend_mm_write_stderr("\n", sizeof("\n") - 1);
 #if ZEND_DEBUG && defined(HAVE_KILL) && defined(HAVE_GETPID)
 	kill(getpid(), SIGSEGV);
 #endif
@@ -103,7 +114,6 @@ static void zend_mm_panic(const char *message)
 #endif
 #define HAVE_MEM_MALLOC     /* use malloc() to allocate segments         */
 
-#include <sys/types.h>
 #include <sys/stat.h>
 #if HAVE_LIMITS_H
 #include <limits.h>
@@ -1738,19 +1748,6 @@ ZEND_API void zend_mm_shutdown(zend_mm_heap *heap, int full_shutdown, int silent
 		}
 		heap->overflow = 0;
 	}
-}
-
-/* Write directly to stderr: _exit() does not flush stdio buffers, and stderr
- * may be buffered (e.g. in Apache children), which would lose the message. */
-static void zend_mm_write_stderr(const char *buf, size_t len)
-{
-#ifdef ZEND_WIN32
-	fwrite(buf, 1, len, stderr);
-	fflush(stderr);
-#else
-	ssize_t written = write(STDERR_FILENO, buf, len);
-	(void) written;
-#endif
 }
 
 /* Report a fatal allocation error and terminate the process.

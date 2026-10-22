@@ -23,13 +23,29 @@ check_ok() {
 	fi
 }
 
+check_cleanup_reuse() {
+	local label=$1 before after expected
+	rm -f "$WWW/markers/fatal-pid"
+	request fatal.php > /dev/null
+	before=$(cat "$WWW/markers/fatal-pid" 2>/dev/null)
+	after=$(request cleanup-state.php 'probe%5Bvalue%5D=clean')
+	expected="clean pid=$before"
+	if [ -n "$before" ] && [ "$after" = "$expected" ]; then
+		pass "$label (worker $before reused with clean state)"
+	else
+		fail "$label: expected '$expected', got '$after'"
+	fi
+}
+
 CONFIG_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../config/php2shell" && pwd)
 
 # Settings from config/php2shell that must be in effect
 check_settings() {
 	local out=$1
 	local kv k
-	for kv in 'max_input_nesting_level=16' 'max_input_time=30' 'memory_limit=128M' 'post_max_size=8M'; do
+	for kv in 'max_file_uploads=20' 'max_input_nesting_level=16' 'max_input_time=30' \
+		'max_input_vars=1000' 'max_multipart_body_parts=-1' 'memory_limit=128M' \
+		'post_max_size=8M' 'upload_max_filesize=8M' 'override_probe=12'; do
 		if grep -qxF "$kv" <<<"$out"; then pass "setting $kv"; else fail "setting $kv not in effect"; fi
 	done
 	# Booleans read back as "" (php.ini Off) or "0" (php_admin_flag off)
@@ -56,10 +72,16 @@ check_stress() {
 }
 
 prepare_www() {
+	local sapi=$1
 	WWW=$(mktemp -d)
 	cp "$CI_DIR"/www/*.php "$WWW"/
 	# The shipped hardening settings are the php.ini under test
 	cp "$CONFIG_DIR/zz-php2shell.ini" "$WWW/php.ini"
+	case "$sapi" in
+		fpm) cp "$CI_DIR/www/fpm-overrides.ini" "$WWW/.user.ini" ;;
+		apache) cp "$CI_DIR/www/apache-overrides.htaccess" "$WWW/.htaccess" ;;
+		*) echo "::error::unknown SAPI '$sapi'"; exit 1 ;;
+	esac
 	mkdir -p "$WWW/markers"
 	chmod -R a+rwX "$WWW"
 	[ -f "$WWW/php.ini" ] || { echo "::error::php.ini missing"; exit 1; }

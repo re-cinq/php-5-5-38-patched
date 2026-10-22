@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # PHP-FPM integration test: a request that exceeds memory_limit or
 # max_execution_time must terminate only its worker, without running user
-# code, and FPM must replace the worker. Requests that end in a regular fatal
-# error must not affect later requests served by the same workers.
+# code, and FPM must replace the worker. A bailout during request cleanup must
+# leave clean state for the next request in the same worker.
 # usage: ci/fpm-test.sh <php-src-dir built with --enable-fpm>
 set -uo pipefail
 SRC=$(cd "$1" && pwd)
 CI_DIR=$(cd "$(dirname "$0")" && pwd)
 . "$CI_DIR/lib.sh"
 FAILED=0
-prepare_www
+prepare_www fpm
 RUN=$(mktemp -d)
 LOG=$RUN/fpm.log
 PORT=9055
@@ -28,7 +28,7 @@ CONF
 [www]
 listen = 127.0.0.1:$PORT
 pm = static
-pm.max_children = 2
+pm.max_children = 1
 php_admin_value[error_log] = $RUN/php-errors.log
 CONF
 	cat "$CONFIG_DIR/php-fpm-pool.conf"
@@ -65,8 +65,7 @@ grep -qx 'post_vars=0' <<<"$body" && pass "body above post_max_size discarded" |
 check_ok "request after oversized POST" "$(request ok.php n=0)" 0
 
 for i in $(seq 1 20); do
-	request fatal.php "" > /dev/null
-	check_ok "request $i after a fatal error" "$(request ok.php n=$i)" "$i"
+	check_cleanup_reuse "cleanup bailout $i"
 done
 
 before=$(exits 1)
