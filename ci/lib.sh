@@ -43,8 +43,9 @@ check_settings() {
 # the heap. <log> <requests>
 check_stress() {
 	local log=$1 n=$2 terminated
-	terminated=$(grep -c 'Maximum execution time of 1 second exceeded (terminated)' "$log")
-	[ "$terminated" -ge "$n" ] && pass "stress: $terminated/$n requests terminated cleanly" \
+	# Only count stress.php: the earlier timeout.php test logs the same message
+	terminated=$(grep -c 'Maximum execution time of 1 second exceeded (terminated) in .*/stress\.php' "$log")
+	[ "$terminated" -eq "$n" ] && pass "stress: $terminated/$n requests terminated cleanly" \
 		|| fail "stress: only $terminated/$n requests terminated with the hard-exit message"
 	if ls "$WWW"/markers/stress-* >/dev/null 2>&1; then
 		fail "stress: a shutdown function ran after the timeout"
