@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # Apache 2.4 prefork + mod_php integration test: a request that exceeds
 # memory_limit or max_execution_time must terminate only its child, without
-# running user code, and Apache must keep serving requests. Requests that end
-# in a regular fatal error must not affect later requests served by the same
-# children.
+# running user code, and Apache must keep serving requests. A bailout during
+# request cleanup must leave clean state for the next request in the same child.
 # usage: ci/apache-test.sh <php-src-dir built with --with-apxs2>
 set -uo pipefail
 SRC=$(cd "$1" && pwd)
 CI_DIR=$(cd "$(dirname "$0")" && pwd)
 . "$CI_DIR/lib.sh"
 FAILED=0
-prepare_www
+prepare_www apache
 RUN=$(mktemp -d)
 LOG=$RUN/error.log
 PORT=8085
@@ -27,20 +26,23 @@ LogLevel notice
 LoadModule mpm_prefork_module $MODULES/mod_mpm_prefork.so
 LoadModule authz_core_module $MODULES/mod_authz_core.so
 LoadModule php5_module $SRC/libs/libphp5.so
-StartServers 2
-MinSpareServers 2
-MaxSpareServers 4
-MaxRequestWorkers 4
+StartServers 1
+MinSpareServers 1
+MaxSpareServers 1
+MaxRequestWorkers 1
 PHPIniDir "$WWW"
 DocumentRoot "$WWW"
 <Directory "$WWW">
 	Require all granted
+	AllowOverride Options
 </Directory>
 <FilesMatch "\.php$">
 	SetHandler application/x-httpd-php
 </FilesMatch>
 # Shipped hardening (config/php2shell)
 Include "$CONFIG_DIR/apache-mod_php.conf"
+# Keep the production limit locked, but shorten it for timeout stress tests.
+php_admin_value max_execution_time 1
 CONF
 
 /usr/sbin/apache2 -f "$RUN/httpd.conf" -t || { echo "::error::Apache configuration test failed"; exit 1; }
@@ -50,11 +52,15 @@ pass "Apache configuration test"
 trap '/usr/sbin/apache2 -f "$RUN/httpd.conf" -k stop; sleep 1; echo "----- apache error log"; cat "$LOG"' EXIT
 for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/ok.php" && break; sleep 0.2; done
 
-request() { curl -s -m 30 "http://127.0.0.1:$PORT/$1"; }
+request() {
+	local target=$1
+	[ -n "${2:-}" ] && target="$target?$2"
+	curl -s -m 30 "http://127.0.0.1:$PORT/$target"
+}
 
 check_ok "baseline request" "$(request 'ok.php?n=0')" 0
 
-check_settings "$(request settings.php)"
+check_settings "$(request settings.php)" 1
 curl -s -D - -o /dev/null "http://127.0.0.1:$PORT/ok.php" | grep -qi '^X-Powered-By' && fail "X-Powered-By header exposed" || pass "no X-Powered-By header"
 
 # LimitRequestBody rejects a body above 8M before PHP parses it
@@ -65,8 +71,7 @@ status=$(curl -s -m 60 -o /dev/null -w '%{http_code}' -H 'Content-Type: applicat
 check_ok "request after oversized POST" "$(request 'ok.php?n=0')" 0
 
 for i in $(seq 1 20); do
-	request fatal.php > /dev/null
-	check_ok "request $i after a fatal error" "$(request "ok.php?n=$i")" "$i"
+	check_cleanup_reuse "cleanup bailout $i"
 done
 
 body=$(request 'oom.php?id=apache'); rc=$?
@@ -86,9 +91,10 @@ for i in 1 2 3 4 5 6; do check_ok "request $i after timeout" "$(request "ok.php?
 
 # Timeout stress (see ci/www/stress.php)
 STRESS_N=30
+before=$(grep -c 'Maximum execution time of 1 second exceeded (terminated)' "$LOG")
 for i in $(seq 1 $STRESS_N); do request stress.php > /dev/null; done
 sleep 1
-check_stress "$LOG" $STRESS_N
+check_stress "$LOG" $STRESS_N "$before"
 for i in 1 2 3 4; do check_ok "request $i after stress" "$(request "ok.php?n=$i")" "$i"; done
 
 if grep -qE 'exit signal|Segmentation fault|zend_mm_heap corrupted' "$LOG"; then

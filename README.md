@@ -4,6 +4,13 @@
 > end-of-life; upgrading to a supported PHP version remains the recommended
 > path.
 >
+> **Disclaimer:** This repository, including its code, patches, configuration,
+> and documentation, is provided "as is," without warranty of any kind, express
+> or implied. Use it entirely at your own risk. To the maximum extent permitted
+> by law, the maintainers and contributors accept no responsibility or liability
+> for any loss, damage, security incident, service interruption, or other
+> consequence arising from its use.
+>
 > - Changes and test results: [pull request #1](https://github.com/re-cinq/php-5-5-38-patched/pull/1)
 > - Recommended runtime configuration: [`config/php2shell/README.md`](config/php2shell/README.md)
 > - CI: [`.github/workflows/php2shell.yml`](.github/workflows/php2shell.yml)

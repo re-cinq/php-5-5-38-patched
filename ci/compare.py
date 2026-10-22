@@ -7,6 +7,10 @@ Fails if
     pristine 5.5.38 (i.e. it would not detect PHP2Shell),
   - a test that passes on pristine fails on the patched tree, after re-running
     it to rule out flaky (network/timing dependent) tests,
+  - the patched tree introduces an XFAIL outside the explicit upload-progress
+    allowlist,
+  - the patched tree introduces a SKIP outside the explicit timeout-behaviour
+    allowlist, or reports WARN where pristine passes,
   - either suite did not run to completion, or a test that ran on pristine did
     not run on the patched tree.
 """
@@ -19,6 +23,20 @@ import sys
 REGRESSION_ONLY = {
     "tests/basic/php2shell_multipart_headers.phpt",
     "Zend/tests/php2shell_oom_hard_exit_003.phpt",
+}
+EXPECTED_PATCH_XFAILS = {
+    "ext/session/tests/rfc1867.phpt",
+    "ext/session/tests/rfc1867_inter.phpt",
+    "ext/session/tests/rfc1867_sid_cookie.phpt",
+    "ext/session/tests/rfc1867_sid_get.phpt",
+    "ext/session/tests/rfc1867_sid_get_2.phpt",
+    "ext/session/tests/rfc1867_sid_invalid.phpt",
+    "ext/session/tests/rfc1867_sid_only_cookie.phpt",
+    "ext/session/tests/rfc1867_sid_post.phpt",
+}
+EXPECTED_PATCH_SKIPS = {
+    "tests/func/005a.phpt",
+    "tests/lang/045.phpt",
 }
 RESULT_RE = re.compile(r"\b(PASS|FAIL|SKIP|XFAIL|BORK|LEAK|WARN)\s.*?\[([^\]\s]+\.phpt)\]")
 
@@ -60,6 +78,22 @@ def main():
     missing = sorted(set(pristine) - set(patched))
     for t in missing:
         errors.append(f"{t}: ran on pristine 5.5.38 but not on the patched tree")
+
+    new_xfails = sorted(t for t, result in patched.items()
+                        if result == "XFAIL" and pristine.get(t) != "XFAIL")
+    for t in new_xfails:
+        if t not in EXPECTED_PATCH_XFAILS:
+            errors.append(f"{t}: new XFAIL on patched tree (not in the explicit allowlist)")
+
+    new_skips = sorted(t for t, result in patched.items()
+                       if result == "SKIP" and pristine.get(t) != "SKIP")
+    for t in new_skips:
+        if t not in EXPECTED_PATCH_SKIPS:
+            errors.append(f"{t}: new SKIP on patched tree (not in the explicit allowlist)")
+
+    for t in sorted(patched):
+        if patched[t] == "WARN" and pristine.get(t) in ("PASS", "SKIP"):
+            errors.append(f"{t}: WARN on patched tree, {pristine[t]} on pristine 5.5.38")
 
     php2shell = sorted(t for t in patched if "php2shell_" in t)
     if not php2shell:

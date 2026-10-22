@@ -500,6 +500,13 @@ static void sapi_send_headers_free(TSRMLS_D)
 
 SAPI_API void sapi_deactivate(TSRMLS_D)
 {
+	zval *callback_func = SG(callback_func);
+
+	/* Detach request-owned callback state before any cleanup callback can bail
+	 * out and leave a persistent SAPI global pointing into the request heap. */
+	SG(callback_func) = NULL;
+	SG(fci_cache) = empty_fcall_info_cache;
+
 	zend_llist_destroy(&SG(sapi_headers).headers);
 	if (SG(request_info).post_data) {
 		efree(SG(request_info).post_data);
@@ -553,8 +560,8 @@ SAPI_API void sapi_deactivate(TSRMLS_D)
 	SG(sapi_started) = 0;
 	SG(headers_sent) = 0;
 	SG(callback_run) = 0;
-	if (SG(callback_func)) {
-		zval_ptr_dtor(&SG(callback_func));
+	if (callback_func) {
+		zval_ptr_dtor(&callback_func);
 	}
 	SG(request_info).headers_read = 0;
 	SG(global_request_time) = 0;

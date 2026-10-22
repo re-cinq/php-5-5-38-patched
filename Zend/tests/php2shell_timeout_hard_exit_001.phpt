@@ -20,4 +20,4 @@ while (true) {
 }
 ?>
 --EXPECTF--
-Fatal error: Maximum execution time of 1 second exceeded (terminated) in %s on line %d
+Fatal error: Maximum execution time of 1 second exceeded (terminated)

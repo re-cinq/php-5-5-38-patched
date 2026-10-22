@@ -23,28 +23,47 @@ check_ok() {
 	fi
 }
 
+check_cleanup_reuse() {
+	local label=$1 before after expected
+	rm -f "$WWW/markers/fatal-pid"
+	request fatal.php > /dev/null
+	before=$(cat "$WWW/markers/fatal-pid" 2>/dev/null)
+	after=$(request cleanup-state.php 'probe%5Bvalue%5D=clean')
+	expected="clean pid=$before"
+	if [ -n "$before" ] && [ "$after" = "$expected" ]; then
+		pass "$label (worker $before reused with clean state)"
+	else
+		fail "$label: expected '$expected', got '$after'"
+	fi
+}
+
 CONFIG_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../config/php2shell" && pwd)
 
 # Settings from config/php2shell that must be in effect
 check_settings() {
-	local out=$1
+	local out=$1 expected_max_execution_time=${2:-30}
 	local kv k
-	for kv in 'max_input_nesting_level=16' 'max_input_time=30' 'memory_limit=128M' 'post_max_size=8M'; do
+	for kv in 'max_file_uploads=20' 'max_input_nesting_level=16' 'max_input_time=30' \
+		'max_input_vars=1000' 'max_multipart_body_parts=-1' 'memory_limit=128M' \
+		"max_execution_time=$expected_max_execution_time" 'post_max_size=8M' 'upload_max_filesize=8M' \
+		'log_errors=1' 'override_probe=12'; do
 		if grep -qxF "$kv" <<<"$out"; then pass "setting $kv"; else fail "setting $kv not in effect"; fi
 	done
 	# Booleans read back as "" (php.ini Off) or "0" (php_admin_flag off)
-	for k in session.upload_progress.enabled expose_php display_errors; do
+	for k in session.upload_progress.enabled expose_php display_errors display_startup_errors; do
 		if grep -qxE "$k=0?" <<<"$out"; then pass "setting $k off"; else fail "setting $k not off: $(grep "^$k=" <<<"$out")"; fi
 	done
 }
 
 # After the stress run: every request must have terminated its process
 # cleanly, no shutdown function may have run, and nothing may have corrupted
-# the heap. <log> <requests>
+# the heap. <log> <requests> <timeout-count-before-stress>
 check_stress() {
-	local log=$1 n=$2 terminated
-	# Only count stress.php: the earlier timeout.php test logs the same message
-	terminated=$(grep -c 'Maximum execution time of 1 second exceeded (terminated) in .*/stress\.php' "$log")
+	local log=$1 n=$2 before=$3 total terminated
+	# The async-signal-safe timeout message deliberately omits request pointers,
+	# so count only the messages added during this sequential stress phase.
+	total=$(grep -c 'Maximum execution time of 1 second exceeded (terminated)' "$log")
+	terminated=$((total - before))
 	[ "$terminated" -eq "$n" ] && pass "stress: $terminated/$n requests terminated cleanly" \
 		|| fail "stress: only $terminated/$n requests terminated with the hard-exit message"
 	if ls "$WWW"/markers/stress-* >/dev/null 2>&1; then
@@ -56,10 +75,16 @@ check_stress() {
 }
 
 prepare_www() {
+	local sapi=$1
 	WWW=$(mktemp -d)
 	cp "$CI_DIR"/www/*.php "$WWW"/
 	# The shipped hardening settings are the php.ini under test
 	cp "$CONFIG_DIR/zz-php2shell.ini" "$WWW/php.ini"
+	case "$sapi" in
+		fpm) cp "$CI_DIR/www/fpm-overrides.ini" "$WWW/.user.ini" ;;
+		apache) cp "$CI_DIR/www/apache-overrides.htaccess" "$WWW/.htaccess" ;;
+		*) echo "::error::unknown SAPI '$sapi'"; exit 1 ;;
+	esac
 	mkdir -p "$WWW/markers"
 	chmod -R a+rwX "$WWW"
 	[ -f "$WWW/php.ini" ] || { echo "::error::php.ini missing"; exit 1; }

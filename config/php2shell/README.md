@@ -39,7 +39,7 @@ Drop-in configuration for PHP 5.5.38 **with the PHP2Shell patch** (CVE-2026-1096
 | `request_terminate_timeout` | 60s | The master kills a request that outlives `max_execution_time`/`max_input_time`, e.g. one blocked in I/O, where PHP's CPU timer doesn't run. |
 | `catch_workers_output` | yes | **Required for visibility.** The patch writes OOM and timeout errors to the worker's stderr; without this the only trace is `exited with code 1/124`. |
 | `security.limit_extensions` | .php | Only execute `.php` files. |
-| `php_admin_flag/value[...]` | | Enforce the request-parsing settings per pool, so `.user.ini` or `ini_set()` can't loosen them. |
+| `php_admin_flag/value[...]` | Same security limits as `zz-php2shell.ini` | Enforce the request-parsing, memory, execution-time, and error-display settings per pool, so `.user.ini` or `ini_set()` can't loosen them. Tune the pool values together with `zz-php2shell.ini`. |
 | `emergency_restart_threshold`/`_interval` | 10 / 1m | Reload the master if workers die from SIGSEGV/SIGBUS. The patch's clean exits don't count. |
 | `process_control_timeout` | 10s | Bounded shutdown on reload or stop. |
 
@@ -52,7 +52,7 @@ Drop-in configuration for PHP 5.5.38 **with the PHP2Shell patch** (CVE-2026-1096
 | `LimitRequestBody` | 8388608 | Apache rejects larger bodies with 413 before PHP parses them. Keep in line with `post_max_size`. |
 | `LimitRequestFields`, `LimitRequestFieldSize`, `LimitRequestLine`, `Timeout` | 100, 8190, 8190, 60 | Bound headers and slow requests. |
 | `ServerTokens`, `ServerSignature` | Prod, Off | No version banners. |
-| `php_admin_flag/value` | | Enforce the request-parsing settings so `.htaccess` can't loosen them. |
+| `php_admin_flag/value` | Same security limits as `zz-php2shell.ini` | Enforce the request-parsing, memory, execution-time, and error-display settings so `.htaccess` or `ini_set()` can't loosen them. Tune the server values together with `zz-php2shell.ini`. |
 
 ## Rebuild third-party extensions
 
@@ -60,7 +60,7 @@ Some of the fix is in header macros (the smart_str size guard in `ext/standard/p
 
 ## Do not use
 
-- **`RLIMIT_AS` / `RLIMIT_DATA` as a memory cap.** That includes Apache `RLimitMEM`, systemd `LimitAS=`/`LimitDATA=` on the php-fpm or httpd unit, and `ulimit -v`/`-d`. The advisory warns they reach the same vulnerable failure paths. Use `memory_limit`. A cgroup memory limit (systemd `MemoryMax=`) kills the whole process and is fine.
+- **`RLIMIT_AS` / `RLIMIT_DATA` as a memory cap.** That includes Apache `RLimitMEM`, systemd `LimitAS=`/`LimitDATA=` on the php-fpm or httpd unit, and `ulimit -v`/`-d`. The advisory warns they reach the same allocation-failure paths. Use the patched `memory_limit` path. A cgroup memory limit such as systemd `MemoryMax=` is only a final containment layer: an allocation can fail before the kernel kills a process, and a shared cgroup can kill the FPM master or multiple workers.
 - **`memory_limit = -1`.**
 
 ## Emergency measures for hosts that cannot be patched yet
