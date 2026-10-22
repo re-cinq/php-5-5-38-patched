@@ -28,9 +28,13 @@ CONFIG_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../config/php2shell" && pwd)
 # Settings from config/php2shell that must be in effect
 check_settings() {
 	local out=$1
-	for kv in 'session.upload_progress.enabled=' 'max_input_nesting_level=16' 'max_input_time=30' \
-			'memory_limit=128M' 'post_max_size=8M' 'expose_php=' 'display_errors='; do
+	local kv k
+	for kv in 'max_input_nesting_level=16' 'max_input_time=30' 'memory_limit=128M' 'post_max_size=8M'; do
 		if grep -qxF "$kv" <<<"$out"; then pass "setting $kv"; else fail "setting $kv not in effect"; fi
+	done
+	# Booleans read back as "" (php.ini Off) or "0" (php_admin_flag off)
+	for k in session.upload_progress.enabled expose_php display_errors; do
+		if grep -qxE "$k=0?" <<<"$out"; then pass "setting $k off"; else fail "setting $k not off: $(grep "^$k=" <<<"$out")"; fi
 	done
 }
 
