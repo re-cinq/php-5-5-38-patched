@@ -39,7 +39,13 @@ pass "php-fpm configuration test"
 
 "$SRC/sapi/fpm/php-fpm" -c "$WWW/php.ini" -y "$RUN/php-fpm.conf" &
 FPM_PID=$!
-trap 'kill $FPM_PID 2>/dev/null; echo "----- php-fpm log"; cat "$LOG"' EXIT
+cleanup_fpm() {
+	kill "$FPM_PID" 2>/dev/null
+	wait "$FPM_PID" 2>/dev/null
+	echo "----- php-fpm log"
+	cat "$LOG"
+}
+trap cleanup_fpm EXIT
 for _ in $(seq 1 50); do grep -q 'ready to handle connections' "$LOG" 2>/dev/null && break; sleep 0.2; done
 grep -q 'ready to handle connections' "$LOG" || { echo "::error::php-fpm did not start"; exit 1; }
 
