@@ -28,7 +28,7 @@ catch_workers_output = yes
 php_admin_value[error_log] = $RUN/php-errors.log
 CONF
 
-"$SRC/sapi/fpm/php-fpm" -n -c "$WWW/php.ini" -y "$RUN/php-fpm.conf" &
+"$SRC/sapi/fpm/php-fpm" -c "$WWW/php.ini" -y "$RUN/php-fpm.conf" &
 FPM_PID=$!
 trap 'kill $FPM_PID 2>/dev/null; echo "----- php-fpm log"; cat "$LOG"' EXIT
 for _ in $(seq 1 50); do grep -q 'ready to handle connections' "$LOG" 2>/dev/null && break; sleep 0.2; done

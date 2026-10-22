@@ -25,6 +25,7 @@ DefaultRuntimeDir "$RUN"
 ErrorLog "$LOG"
 LogLevel notice
 LoadModule mpm_prefork_module $MODULES/mod_mpm_prefork.so
+LoadModule authz_core_module $MODULES/mod_authz_core.so
 LoadModule php5_module $SRC/libs/libphp5.so
 StartServers 2
 MinSpareServers 2
@@ -32,6 +33,9 @@ MaxSpareServers 4
 MaxRequestWorkers 4
 PHPIniDir "$WWW"
 DocumentRoot "$WWW"
+<Directory "$WWW">
+	Require all granted
+</Directory>
 <FilesMatch "\.php$">
 	SetHandler application/x-httpd-php
 </FilesMatch>
