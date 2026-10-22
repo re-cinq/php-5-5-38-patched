@@ -1740,6 +1740,19 @@ ZEND_API void zend_mm_shutdown(zend_mm_heap *heap, int full_shutdown, int silent
 	}
 }
 
+/* Write directly to stderr: _exit() does not flush stdio buffers, and stderr
+ * may be buffered (e.g. in Apache children), which would lose the message. */
+static void zend_mm_write_stderr(const char *buf, size_t len)
+{
+#ifdef ZEND_WIN32
+	fwrite(buf, 1, len, stderr);
+	fflush(stderr);
+#else
+	ssize_t written = write(STDERR_FILENO, buf, len);
+	(void) written;
+#endif
+}
+
 /* Report a fatal allocation error and terminate the process.
  *
  * The error is raised from inside the allocator, possibly while engine or
@@ -1753,6 +1766,8 @@ ZEND_API void zend_mm_safe_error_ex(const char *format, ...)
 	const char *error_filename = NULL;
 	uint error_lineno = 0;
 	char buf[1024];
+	char msg[2048];
+	int len;
 	va_list args;
 	TSRMLS_FETCH();
 
@@ -1768,25 +1783,20 @@ ZEND_API void zend_mm_safe_error_ex(const char *format, ...)
 	vsnprintf(buf, sizeof(buf), format, args);
 	va_end(args);
 
-	fprintf(stderr, "\nFatal error: %s in %s on line %d\n",
+	len = snprintf(msg, sizeof(msg), "\nFatal error: %s in %s on line %d\n",
 		buf,
 		error_filename ? error_filename : "Unknown",
 		error_lineno);
-/* See http://support.microsoft.com/kb/190351 */
-#ifdef PHP_WIN32
-	fflush(stderr);
-#endif
+	if (len > 0) {
+		zend_mm_write_stderr(msg, MIN((size_t)len, sizeof(msg) - 1));
+	}
 
 	_exit(1);
 }
 
 ZEND_API void zend_out_of_memory(void)
 {
-	fprintf(stderr, "Out of memory\n");
-/* See http://support.microsoft.com/kb/190351 */
-#ifdef PHP_WIN32
-	fflush(stderr);
-#endif
+	zend_mm_write_stderr("Out of memory\n", sizeof("Out of memory\n") - 1);
 	_exit(1);
 }
 
