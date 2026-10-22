@@ -6,7 +6,9 @@ Fails if
   - a php2shell_* test that targets the vulnerable behaviour does not FAIL on
     pristine 5.5.38 (i.e. it would not detect PHP2Shell),
   - a test that passes on pristine fails on the patched tree, after re-running
-    it to rule out flaky (network/timing dependent) tests.
+    it to rule out flaky (network/timing dependent) tests,
+  - either suite did not run to completion, or a test that ran on pristine did
+    not run on the patched tree.
 """
 import os
 import re
@@ -19,6 +21,14 @@ REGRESSION_ONLY = {
     "Zend/tests/php2shell_oom_hard_exit_003.phpt",
 }
 RESULT_RE = re.compile(r"\b(PASS|FAIL|SKIP|XFAIL|BORK|LEAK|WARN)\s.*?\[([^\]\s]+\.phpt)\]")
+
+
+def completed(log):
+    with open(log, errors="replace") as f:
+        text = f.read().replace("\r", "\n")
+    # run-tests.php prints these only after the last test
+    return (re.search(r"^Number of tests\s*:\s*\d+", text, re.M) is not None
+            and re.search(r"^Time taken\s*:\s*\d+ seconds", text, re.M) is not None)
 
 
 def parse(log):
@@ -43,6 +53,13 @@ def main():
         print("::error::no test results parsed")
         return 1
     errors = []
+
+    for name, log in (("patched", patched_log), ("pristine", pristine_log)):
+        if not completed(log):
+            errors.append(f"{name} test suite did not run to completion (no result summary in {log})")
+    missing = sorted(set(pristine) - set(patched))
+    for t in missing:
+        errors.append(f"{t}: ran on pristine 5.5.38 but not on the patched tree")
 
     php2shell = sorted(t for t in patched if "php2shell_" in t)
     if not php2shell:

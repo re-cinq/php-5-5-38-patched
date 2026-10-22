@@ -59,7 +59,7 @@ curl -s -D - -o /dev/null "http://127.0.0.1:$PORT/ok.php" | grep -qi '^X-Powered
 
 # LimitRequestBody rejects a body above 8M before PHP parses it
 head -c $((9 * 1024 * 1024)) /dev/zero | tr '\0' 'a' > "$RUN/big-body"
-status=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/x-www-form-urlencoded' \
+status=$(curl -s -m 60 -o /dev/null -w '%{http_code}' -H 'Content-Type: application/x-www-form-urlencoded' \
 	--data-binary @"$RUN/big-body" "http://127.0.0.1:$PORT/settings.php")
 [ "$status" = 413 ] && pass "body above LimitRequestBody rejected with 413" || fail "body above LimitRequestBody: expected HTTP 413, got $status"
 check_ok "request after oversized POST" "$(request 'ok.php?n=0')" 0

@@ -45,7 +45,7 @@ grep -q 'ready to handle connections' "$LOG" || { echo "::error::php-fpm did not
 
 raw_request() { # <script> <query> ; prints headers and body
 	SCRIPT_FILENAME="$WWW/$1" SCRIPT_NAME="/$1" REQUEST_METHOD=GET QUERY_STRING="${2:-}" \
-		cgi-fcgi -bind -connect 127.0.0.1:$PORT 2>/dev/null | tr -d '\r'
+		timeout 60 cgi-fcgi -bind -connect 127.0.0.1:$PORT 2>/dev/null | tr -d '\r'
 }
 request() { raw_request "$@" | sed '1,/^$/d'; }
 exits() { grep -c "exited with code $1" "$LOG"; }
@@ -55,10 +55,12 @@ check_ok "baseline request" "$(request ok.php n=0)" 0
 check_settings "$(request settings.php)"
 raw_request ok.php n=0 | sed '/^$/q' | grep -qi '^X-Powered-By' && fail "X-Powered-By header exposed" || pass "no X-Powered-By header"
 
-# A body above post_max_size is not parsed into $_POST
-body=$(printf 'a=1&b=2' | SCRIPT_FILENAME="$WWW/settings.php" SCRIPT_NAME=/settings.php REQUEST_METHOD=POST \
-	CONTENT_TYPE=application/x-www-form-urlencoded CONTENT_LENGTH=$((9 * 1024 * 1024)) \
-	cgi-fcgi -bind -connect 127.0.0.1:$PORT 2>/dev/null | tr -d '\r' | sed '1,/^$/d')
+# A body above post_max_size is not parsed into $_POST. The body must really
+# be CONTENT_LENGTH bytes long, otherwise the request never completes.
+head -c $((9 * 1024 * 1024)) /dev/zero | tr '\0' 'a' | sed '1s/^/a=1\&b=/' | head -c $((9 * 1024 * 1024)) > "$RUN/big-body"
+body=$(SCRIPT_FILENAME="$WWW/settings.php" SCRIPT_NAME=/settings.php REQUEST_METHOD=POST \
+	CONTENT_TYPE=application/x-www-form-urlencoded CONTENT_LENGTH=$(wc -c < "$RUN/big-body" | tr -d ' ') \
+	timeout 60 cgi-fcgi -bind -connect 127.0.0.1:$PORT < "$RUN/big-body" 2>/dev/null | tr -d '\r' | sed '1,/^$/d')
 grep -qx 'post_vars=0' <<<"$body" && pass "body above post_max_size discarded" || fail "body above post_max_size was parsed"
 check_ok "request after oversized POST" "$(request ok.php n=0)" 0
 

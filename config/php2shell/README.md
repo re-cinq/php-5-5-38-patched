@@ -24,7 +24,8 @@ Drop-in configuration for PHP 5.5.38 **with the PHP2Shell patch** (CVE-2026-1096
 | `max_input_vars`, `max_input_nesting_level` | 1000, 16 | Bound the number of variables and nested arrays built from input. Deep nesting multiplies allocations; the default is 64. |
 | `max_multipart_body_parts` | -1 | New with the patch: caps multipart parts (-1 means `max_input_vars + max_file_uploads`). |
 | `max_input_time` | 30 | CPU-time limit for parsing the request (default: unlimited). With the patch, exceeding it terminates the worker. |
-| `file_uploads` | Off, if unused | Removes the multipart parser entirely. |
+| `file_uploads` | Off, if unused | Stops accepting file parts. Multipart form **fields are still parsed**, so this doesn't remove the multipart parser. |
+| `enable_post_data_reading` | Off, only if the application reads `php://input` itself | The only setting that stops PHP parsing request bodies. It leaves `$_POST` and `$_FILES` empty. |
 | `session.upload_progress.enabled` | Off | Serializes the session during body parsing, before RINIT. The patch already forces it off. |
 | `memory_limit`, `max_execution_time` | 128M, 30 (tune) | With the patch, reaching either terminates the worker cleanly. Keep both finite; never use `memory_limit = -1`. |
 | `expose_php` | Off | Hides the `X-Powered-By: PHP/5.5.38` version banner. Version scanners such as php2shell-checker then report UNKNOWN. |
@@ -52,6 +53,10 @@ Drop-in configuration for PHP 5.5.38 **with the PHP2Shell patch** (CVE-2026-1096
 | `LimitRequestFields`, `LimitRequestFieldSize`, `LimitRequestLine`, `Timeout` | 100, 8190, 8190, 60 | Bound headers and slow requests. |
 | `ServerTokens`, `ServerSignature` | Prod, Off | No version banners. |
 | `php_admin_flag/value` | | Enforce the request-parsing settings so `.htaccess` can't loosen them. |
+
+## Rebuild third-party extensions
+
+Some of the fix is in header macros (the smart_str size guard in `ext/standard/php_smart_str.h`) and is compiled into every extension that uses them. PECL and other third-party extensions built against the unpatched 5.5.38 headers still load and work, but they keep the old behaviour until they're **rebuilt against this tree's headers** (`phpize` from this build). Extensions bundled in this tree are built with the fix.
 
 ## Do not use
 
