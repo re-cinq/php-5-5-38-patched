@@ -31,9 +31,11 @@ pm = static
 pm.max_children = 1
 php_admin_value[error_log] = $RUN/php-errors.log
 CONF
-	cat "$CONFIG_DIR/php-fpm-pool.conf"
-	# Keep the production limit locked, but shorten it for timeout stress tests.
-	echo 'php_admin_value[max_execution_time] = 1'
+	# Keep the production limit administratively locked, but shorten its value
+	# in this generated test config. FPM keeps the first duplicate pool value,
+	# so appending a second directive would leave the shipped 30s in effect.
+	sed 's/^php_admin_value\[max_execution_time\] = 30$/php_admin_value[max_execution_time] = 1/' \
+		"$CONFIG_DIR/php-fpm-pool.conf"
 } > "$RUN/php-fpm.conf"
 
 "$SRC/sapi/fpm/php-fpm" -c "$WWW/php.ini" -y "$RUN/php-fpm.conf" -t || { echo "::error::php-fpm configuration test failed"; exit 1; }
