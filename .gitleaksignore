@@ -1,0 +1,18 @@
+# Upstream PHP 5.5.38 release files flagged by gitleaks. All are public
+# test fixtures shipped in the official tarball (test-only keys/certs) or
+# false positives on identifiers; none are real secrets.
+ext/ftp/tests/cert.pem:private-key:30
+ext/mysqli/tests/client-key.pem:private-key:1
+ext/openssl/tests/bug37820key.pem:private-key:1
+ext/openssl/tests/bug41033.pem:private-key:1
+ext/openssl/tests/bug66501.phpt:private-key:13
+ext/openssl/tests/bug46127.pem:private-key:19
+ext/openssl/tests/private.key:private-key:1
+ext/openssl/tests/bug54992.pem:private-key:33
+ext/phar/tests/cache_list/files/private.pem:private-key:1
+ext/phar/tests/files/private.pem:private-key:1
+ext/sqlite3/libsqlite/sqlite3ext.h:generic-api-key:307
+ext/sqlite3/libsqlite/sqlite3ext.h:generic-api-key:462
+ext/sqlite3/libsqlite/sqlite3.c:generic-api-key:102162
+ext/sqlite3/libsqlite/sqlite3.c:generic-api-key:102317
+sapi/pi3web/config.w32:generic-api-key:7
