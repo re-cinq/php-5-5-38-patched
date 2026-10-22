@@ -1,5 +1,7 @@
 --TEST--
 session rfc1867 sid post
+--XFAIL--
+Session upload progress is disabled (GHSA-w8hw-w9fx-j79w, GHSA-6wmf-4rv5-p3rp mitigation)
 --INI--
 file_uploads=1
 error_reporting=E_ALL&~E_NOTICE

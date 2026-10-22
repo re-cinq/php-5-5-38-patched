@@ -1,3 +1,15 @@
+> **Note:** this repository is an unofficial, patched build of PHP 5.5.38
+> maintained for a deployment that cannot upgrade yet. It is not the official
+> PHP repository and does not accept upstream contributions. PHP 5.5 is
+> end-of-life; upgrading to a supported PHP version remains the recommended
+> path.
+>
+> - Changes and test results: [pull request #1](https://github.com/re-cinq/php-5-5-38-patched/pull/1)
+> - Recommended runtime configuration: [`config/php2shell/README.md`](config/php2shell/README.md)
+> - CI: [`.github/workflows/php2shell.yml`](.github/workflows/php2shell.yml)
+>
+> The original PHP 5.5.38 README follows.
+
 The PHP Interpreter
 ===================
 

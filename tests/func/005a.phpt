@@ -3,6 +3,8 @@ Testing register_shutdown_function() with timeout. (Bug: #21513)
 --SKIPIF--
 <?php
 if (getenv("SKIP_SLOW_TESTS")) die("skip slow test");
+/* Elsewhere the process is terminated on timeout, see php2shell_timeout_hard_exit_*.phpt */
+if (substr(PHP_OS, 0, 3) != "WIN") die("skip Windows only: shutdown functions no longer run after a timeout");
 ?>
 --FILE--
 <?php
